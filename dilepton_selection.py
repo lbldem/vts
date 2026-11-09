@@ -67,13 +67,29 @@ print("zveto_ok", ak.sum(lead_ok & sub_ok & mll_ok & zveto_ok))
 met_ok = ak.fill_none(met > 40, False)
 print("met_ok", ak.sum(lead_ok & sub_ok & mll_ok & zveto_ok & met_ok))
 
-jet = ak.pad_none(jet, 2, axis=1)               # This fills up 1 jet events with a None
-jet_lead_ok = ak.fill_none((jet.pt[:, 0] > 30) & (abs(jet.eta[:, 0]) < 2.4), False)
-print("jet_lead_ok", ak.sum(lead_ok & sub_ok & mll_ok & zveto_ok & met_ok & jet_lead_ok))
-jet_sub_ok = ak.fill_none((jet.pt[:, 1] > 30) & (abs(jet.eta[:, 1]) < 2.4), False)
-print("jet_sub_ok", ak.sum(lead_ok & sub_ok & mll_ok & zveto_ok & met_ok & jet_lead_ok & jet_sub_ok))
-
-
-mask = lead_ok & sub_ok & mll_ok & zveto_ok & met_ok & jet_lead_ok & jet_sub_ok
+good_jet = jet[(jet.pt > 30) & (abs(jet.eta) < 2.4)]
+jet_ok = ak.num(good_jet) >= 2
+print("jet_ok", ak.sum(lead_ok & sub_ok & mll_ok & zveto_ok & met_ok & jet_ok))
+mask = lead_ok & sub_ok & mll_ok & zveto_ok & met_ok & jet_ok
 lepton = lepton[mask]
 
+def delta_r(eta1, phi1, eta2, phi2):
+    dphi = phi1 - phi2
+    dphi = np.arctan2(np.sin(dphi), np.cos(dphi))
+    return np.sqrt((eta1- eta2)**2 + dphi**2)
+
+particle = t.arrays(["Particle.PID", "Particle.Status", "Particle.PT", "Particle.Eta", "Particle.Phi"])
+
+gen = ak.zip({"pid": particle["Particle.PID"],
+              "status": particle["Particle.Status"],
+              "pt": particle["Particle.PT"],
+              "eta": particle["Particle.Eta"],
+              "phi": particle["Particle.Phi"]})
+
+quark = gen[(abs(gen.pid) == 3) | (abs(gen.pid) == 5)]
+quark = quark[quark.status == 23]
+
+
+pairs = ak.cartesian({"quark": quark, "jet": good_jet}, axis=1, nested=True)
+dr = delta_r(pairs.jet.eta, pairs.jet.phi, pairs.quark.eta, pairs.quark.phi)
+print(dr)
