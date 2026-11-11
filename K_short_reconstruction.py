@@ -74,32 +74,126 @@ pi_gen = ak.concatenate([pair_gen_kin.a, pair_gen_kin.b], axis=1)
 m3 = ak.cartesian({"pi": pi_gen, "trk": track_sel}, axis=1, nested=True)   # pion → (track...)
 dr3 = delta_r(m3.pi.eta, m3.pi.phi, m3.trk.eta, m3.trk.phi)
 n_pi = int(ak.sum(ak.num(pi_gen)))
-for cut in [0.02, 0.05, 0.1, 0.2]:
-    print(f"dR<{cut}: {int(ak.sum(ak.any(dr3 < cut, axis=2)))} / {n_pi}")
+# for cut in [0.02, 0.05, 0.1, 0.2]:
+#     print(f"dR<{cut}: {int(ak.sum(ak.any(dr3 < cut, axis=2)))} / {n_pi}")
 
 # ---------------------------------------------------------------------------
 # 4. [다음 단계] bending 부호 규약: Δphi(track - gen pion) vs charge/pT
 #    기대: 원점을 지나는 직선 근처 (기울기 ∝ decay radius 라 흩어지지만 부호는 일관)
 #          Δeta 는 B-field 영향이 없으니 작아야 함 (독립 검증)
 # ---------------------------------------------------------------------------
-dr3_masked = ak.mask(dr3, dr3 < 0.2)
-best = ak.argmin(dr3_masked, axis=2, keepdims=True)
-trk_best = ak.firsts(m3.trk[best], axis=2)                    # pion 마다 가장 가까운 track (없으면 None)
-ok = ~ak.is_none(trk_best, axis=1)
-pi_m, trk_m = pi_gen[ok], trk_best[ok]
 
-dphi = ak.flatten(delta_phi(trk_m.phi, pi_m.phi))
-deta = ak.flatten(trk_m.eta - pi_m.eta)
-qpt  = ak.flatten(trk_m.charge / trk_m.pt)
+# deta3 = m3.pi.eta - m3.trk.eta
+# good = (dr3 < 0.2) & (abs(deta3) < 0.01)
+# best = ak.argmin(ak.mask(dr3, good), axis=2, keepdims=True)
+# trk_best = ak.firsts(m3.trk[best], axis=2)                    # pion 마다 가장 가까운 track (없으면 None)
+# ok = ~ak.is_none(trk_best, axis=1)
+# pi_m, trk_m = pi_gen[ok], trk_best[ok]
 
-fig, ax = plt.subplots(1, 2, figsize=(10, 4))
-ax[0].scatter(ak.to_numpy(qpt), ak.to_numpy(dphi), s=4)
-ax[0].set_xlabel("charge / pT [1/GeV]"); ax[0].set_ylabel("phi(track) - phi(gen pion) [rad]")
-ax[1].scatter(ak.to_numpy(qpt), ak.to_numpy(deta), s=4)
-ax[1].set_xlabel("charge / pT [1/GeV]"); ax[1].set_ylabel("eta(track) - eta(gen pion)")
-plt.tight_layout(); plt.show()
+# dphi = ak.flatten(delta_phi(trk_m.phi, pi_m.phi))
+# deta = ak.flatten(trk_m.eta - pi_m.eta)
+# qpt  = ak.flatten(trk_m.charge / trk_m.pt)
 
-# (참고) M_ππ 히스토그램: reco 와 gen 겹쳐 그리기
+# fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+# ax[0].scatter(ak.to_numpy(qpt), ak.to_numpy(dphi), s=4)
+# ax[0].set_xlabel("charge / pT [1/GeV]"); ax[0].set_ylabel("phi(track) - phi(gen pion) [rad]")
+# ax[1].scatter(ak.to_numpy(qpt), ak.to_numpy(deta), s=4)
+# ax[1].set_xlabel("charge / pT [1/GeV]"); ax[1].set_ylabel("eta(track) - eta(gen pion)")
+# plt.tight_layout(); plt.show()
+
+# # (참고) M_ππ 히스토그램: reco 와 gen 겹쳐 그리기
 # plt.hist(ak.to_numpy(ak.flatten(m_reco)), bins=80, range=(0.3, 0.7), histtype="step", label="reco")
 # plt.hist(ak.to_numpy(ak.flatten(m_gen)),  bins=80, range=(0.3, 0.7), histtype="step", label="gen")
 # plt.xlabel("M_pipi [GeV]"); plt.legend(); plt.show()
+
+# Vertex Reconstruction
+
+def match_track(pion, tracks, dr_max=0.2, deta_max=0.01):
+    m = ak.cartesian({"pi": pion, "trk": tracks}, axis=1, nested=True)
+    dr = delta_r(m.pi.eta, m.pi.phi, m.trk.eta, m.trk.phi)
+    good = (dr < dr_max) & (abs(m.pi.eta - m.trk.eta) < deta_max)
+    best = ak.argmin(ak.mask(dr, good), axis=2, keepdims=True)
+    return ak.firsts(m.trk[best], axis=2)
+
+trk_a = match_track(pair_gen_kin.a, track_sel)
+trk_b = match_track(pair_gen_kin.b, track_sel)
+both = ~ak.is_none(trk_a, axis=1) & ~ak.is_none(trk_b, axis=1)
+true_pair = ak.zip({"a": trk_a[both], "b": trk_b[both], "vx": pair_gen_kin.a.x[both], "vy": pair_gen_kin.a.y[both]})
+
+def track_circle(trk, B=3.8):
+    R = trk.pt / (0.3 * B) * 1000.0
+    perx = trk.d0 * np.sin(trk.phi)
+    pery = - trk.d0 * np.cos(trk.phi)
+    cx = perx + trk.charge * R * np.sin(trk.phi)
+    cy = pery - trk.charge * R * np.cos(trk.phi)
+    return R, cx, cy
+
+def find_vertex(a, b):
+    Ra, cxa, cya = track_circle(a); Rb, cxb, cyb = track_circle(b)
+    dx, dy = cxb - cxa, cyb - cya
+    d_raw = np.sqrt(dx**2 + dy**2)
+    valid = d_raw > 1e-6
+    d = ak.where(valid, d_raw, 1.0)
+    l = (d**2 + Ra**2 - Rb**2) / (2*d)          # 중심선 위의 거리 (a 와 충돌하지 않게 l 로)
+    h2 = Ra**2 - l**2
+    h = np.sqrt(np.maximum(h2, 0))
+    mx, my = cxa + l*dx/d, cya + l*dy/d
+    nx, ny = -dy/d, dx/d                         # 중심선에 수직인 단위벡터
+    return ak.zip({"v1x": mx + h*nx, "v1y": my + h*ny,
+                   "v2x": mx - h*nx, "v2y": my - h*ny,
+                   "h2": h2, "mx": mx, "my": my, "valid": valid})
+
+vr = find_vertex(pair_reco.a, pair_reco.b)
+vr = vr[vr.valid]
+vt = find_vertex(true_pair.a, true_pair.b)
+vt = vt[vt.valid]
+true_pair = true_pair[vt.valid]
+pair_reco = pair_reco[vt.valid]
+d1t = np.sqrt((vt.v1x - true_pair.vx)**2 + (vt.v1y - true_pair.vy)**2)
+d2t = np.sqrt((vt.v2x - true_pair.vx)**2 + (vt.v2y - true_pair.vy)**2)
+# v_best_x = ak.where(d1t < d2t, vt.v1x, vt.v2x)
+# v_best_y = ak.where(d1t < d2t, vt.v1y, vt.v2y)
+# ex, ey = v_best_x - true_pair.vx, v_best_y - true_pair.vy
+# lxy_true = np.sqrt(true_pair.vx**2 + true_pair.vy**2)
+# ux, uy = true_pair.vx/lxy_true, true_pair.vy/lxy_true
+# err_long = ex * ux + ey * uy
+# err_perp = -ex * uy + ey * ux
+# fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+# ax[0].hist(np.minimum(ak.flatten(d1t), ak.flatten(d2t)), color='r')
+# ax[1].hist(ak.flatten(err_long), bins=60, range=(-200, 200), histtype='step', color='r', label='longitudinal')
+# ax[1].hist(ak.flatten(err_perp), bins=60, range=(-200, 200), histtype='step', color='b', label='perpendicular')
+# ax[1].set_xlabel("vertex error [mm]"); ax[1].legend()
+# plt.show()
+
+def forward_arc(trk, vx, vy):
+    R, cx, cy = track_circle(trk)
+    perx, pery = trk.d0 * np.sin(trk.phi), -trk.d0 * np.cos(trk.phi)
+    th_p = np.arctan2(pery - cy, perx- cx)
+    th_v = np.arctan2(vy - cy, vx - cx)
+    fwd = ak.where(trk.charge > 0, th_p - th_v, th_v - th_p)
+    return fwd % (2*np.pi)
+
+def phi_at(trk, vx, vy):
+    R, cx, cy = track_circle(trk)
+    rx, ry = vx - cx, vy - cy
+    return np.arctan2(-trk.charge * rx, trk.charge * ry)
+
+s1 = forward_arc(true_pair.a, vt.v1x, vt.v1y) + forward_arc(true_pair.b, vt.v1x, vt.v1y)
+s2 = forward_arc(true_pair.a, vt.v2x, vt.v2y) + forward_arc(true_pair.b, vt.v2x, vt.v2y)
+pick1 = s1 < s2
+agree = (pick1 == (d1t < d2t))[vt.h2 > 0]
+print(ak.sum(agree), "/", ak.sum(ak.num(agree)))
+
+perx, pery = true_pair.a.d0 * np.sin(true_pair.a.phi), -true_pair.a.d0 * np.cos(true_pair.a.phi)
+print(ak.max(abs(delta_phi(phi_at(true_pair.a, perx, pery), true_pair.a.phi))))
+
+fig, ax = plt.subplots(1, 2, figsize=(10, 4))
+
+a_t = ak.with_field(true_pair.a, phi_at(true_pair.a, true_pair.vx, true_pair.vy), "phi")
+b_t = ak.with_field(true_pair.b, phi_at(true_pair.b, true_pair.vx, true_pair.vy), "phi")
+m_truthV = pair_mass(a_t, b_t, PION_MASS, PION_MASS)
+ax[0].hist(ak.flatten(m_truthV), bins=80, color='r')
+m_sel = pair_mass(true_pair.a, true_pair.b, PION_MASS, PION_MASS)
+ax[1].hist(ak.flatten(m_sel), bins=80, color='b')
+plt.title("Masses after vertex reconstruction")
+plt.show()
