@@ -60,9 +60,7 @@ def load_objects(tree):
         "EFlowTrack.PID", "EFlowTrack.Charge", "EFlowTrack.PT", "EFlowTrack.Eta",
         "EFlowTrack.Phi", "EFlowTrack.D0", "EFlowTrack.ErrorD0",
         "EFlowTrack.DZ", "EFlowTrack.ErrorDZ",
-        "EFlowTrack.X", "EFlowTrack.Y", "EFlowTrack.Z",
-        "EFlowTrack.Xd", "EFlowTrack.Yd", "EFlowTrack.Zd",
-    ])
+        "EFlowTrack.X", "EFlowTrack.Y", "EFlowTrack.Z"])
 
     # --- lepton ---------------------------------------------------------
     electron = ak.zip({
@@ -102,18 +100,24 @@ def load_objects(tree):
 
     # --- PF track (K0S 재구성용) ---------------------------------------
     #   d0_err = ErrorD0 (오차). significance 는 나중에 d0_sig 로 따로 붙인다.
+    d0 = ev["EFlowTrack.D0"]; d0_err = ev["EFlowTrack.ErrorD0"]
+    dz = ev["EFlowTrack.DZ"]; dz_err = ev["EFlowTrack.ErrorDZ"]
+    d0_sig = abs(d0) / ak.where(d0_err > 0, d0_err, np.inf)
+    dz_sig = abs(dz) / ak.where(dz_err > 0, dz_err, np.inf)
+
     track = ak.zip({
         "pid": ev["EFlowTrack.PID"], "charge": ev["EFlowTrack.Charge"],
         "pt": ev["EFlowTrack.PT"], "eta": ev["EFlowTrack.Eta"], "phi": ev["EFlowTrack.Phi"],
         "d0": ev["EFlowTrack.D0"], "d0_err": ev["EFlowTrack.ErrorD0"],
         "dz": ev["EFlowTrack.DZ"], "dz_err": ev["EFlowTrack.ErrorDZ"],
         "x": ev["EFlowTrack.X"], "y": ev["EFlowTrack.Y"], "z": ev["EFlowTrack.Z"],
-        "xd": ev["EFlowTrack.Xd"], "yd": ev["EFlowTrack.Yd"], "zd": ev["EFlowTrack.Zd"]})
+        "d0": d0, "dz": dz, "d0_err": d0_err, "dz_err": dz_err,
+        "d0_sig": d0_sig, "dz_sig": dz_sig})
 
     return {"electron": electron, "muon": muon, "lepton": lepton,
             "jet": jet, "met": met,
             "gen": gen, "mother_pid": mother_pid, "quark": quark,
-            "track": track}
+            "track": track}, ev
 
 
 def select_dilepton(lepton, jet, met):
