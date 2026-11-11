@@ -92,4 +92,3 @@ quark = quark[quark.status == 23]
 
 pairs = ak.cartesian({"quark": quark, "jet": good_jet}, axis=1, nested=True)
 dr = delta_r(pairs.jet.eta, pairs.jet.phi, pairs.quark.eta, pairs.quark.phi)
-print(dr)
