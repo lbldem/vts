@@ -1,0 +1,20 @@
+universe = vanilla
+executable = run_production.sh
+arguments = $(seed) $(job_index)
+output = logs/job$(job_index).$(Cluster).$(Process).out
+error  = logs/job$(job_index).$(Cluster).$(Process).err
+log    = logs/job$(job_index).$(Cluster).$(Process).log
+request_cpus = 1
+request_memory = 4GB
+request_disk = 20GB
+requirements = (OpSysMajorVer == 9)
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+transfer_output_files = production_results.tar.gz
+transfer_output_remaps = "production_results.tar.gz = results/job$(job_index).seed$(seed).$(Cluster).$(Process).tar.gz"
+queue job_index,seed from jobs.tsv
+
+# jobs.tsv 만들기 (20 job, seed = 3000001 + i):
+#   for i in $(seq 0 19); do printf '%d\t%d\n' "$i" $((3000001 + i)); done > jobs.tsv
+# 제출 전에 한 job 을 손으로:
+#   mkdir -p /tmp/testjob && cd /tmp/testjob && bash ~/vts/condor_ttbar_production/run_production.sh 3000001 0
