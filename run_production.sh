@@ -12,9 +12,10 @@
 # =============================================================================
 set -eo pipefail                 # 어떤 명령이든 실패하면 즉시 종료 (pipe 안의 실패도 포함)
 
+shopt -s nullglob
 seed="$1"
 job_index="$2"
-NEVENTS=5000
+NEVENTS="${NEVENTS:-5000}"
 
 # ---- 인자 검사: 숫자인지, seed 가 job_index 에서 나온 값과 맞는지 (실수 방지)
 [[ "$job_index" =~ ^[0-9]+$ ]] || { echo 'job_index must be an integer' >&2; exit 10; }
@@ -22,12 +23,10 @@ expected_seed=$((3000001 + job_index))
 [ "$seed" -eq "$expected_seed" ] || { echo "seed $seed != expected $expected_seed" >&2; exit 10; }
 
 # ---- 경로 (여기만 환경에 맞게 고치면 됨)
-batch=/home/syim/vts/ttbar_nlo        # 이 스크립트와 input_cards/ 가 있는 곳
-master=/home/syim/vts/ttbar_nlo                       # compile 된 NLO process 디렉토리
+batch=/home/syim/vts/ttbar_nlo_lcg                        
+master=/home/syim/vts/ttbar_nlo_lcg                       # compile 된 NLO process 디렉토리
 mg5=/home/syim/hep/MG5_aMC_v3_8_0
 input_cards="$batch/Cards"
-PY8LIB=/cvmfs/sft.cern.ch/lcg/releases/MCGenerators/pythia8/312-1b262/x86_64-el9-gcc13-opt/lib
-HEPMCLIB=/cvmfs/sft.cern.ch/lcg/releases/LCG_106/HepMC/2.06.11-XXXX/x86_64-el9-gcc13-opt/lib   # ← 실제 버전 경로로
 
 job_scratch="$PWD"               # condor 가 job 마다 주는 작업 디렉토리
 mkdir -p outputs
@@ -46,8 +45,11 @@ trap finish EXIT
 hostname; pwd
 
 # ---- MG5 단계 환경 (대화형에서 성공한 조건 그대로: LCG view 는 아직 source 하지 않음)
-export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}$PY8LIB:$HEPMCLIB"
+set +e
+source /cvmfs/sft.cern.ch/lcg/views/LCG_106/x86_64-el9-gcc13-opt/setup.sh
+set -e
 export OMP_NUM_THREADS=1
+which gfortran g++ python3 DelphesHepMC2
 
 # ---- process 디렉토리 복사 (compile 된 상태 그대로)
 test -r "$master/Cards/run_card.dat"
@@ -146,7 +148,8 @@ for v in ("sig_a", "sig_b", "bkg"):
         t = f["Delphes"]
         assert t.num_entries == n, (v, t.num_entries)
         for b in ("EFlowTrack/EFlowTrack.D0", "EFlowTrack/EFlowTrack.ErrorD0",
-                  "Particle/Particle.M1", "Particle/Particle.X", "Jet/Jet.BTag"):
+                  "Particle/Particle.M1", "Particle/Particle.X", "Jet/Jet.BTag", "Jet/Jet.Constituents", "EFlowPhoton/EFlowPhoton.Eem",
+                  "MissingET/MissingET.MET"):
             t[b]
         print(v, "ok", t.num_entries)
 PY
