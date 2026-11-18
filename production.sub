@@ -1,0 +1,17 @@
+universe = vanilla
+executable = run_production.sh
+arguments = $(seed) $(job_index)
+output = logs/job$(job_index).$(Cluster).$(Process).out
+error  = logs/job$(job_index).$(Cluster).$(Process).err
+log    = logs/job$(job_index).$(Cluster).$(Process).log
+request_cpus = 1
+request_memory = 4GB
+request_disk = 20GB
+requirements = (OpSysMajorVer == 9) && (Machine != "dn17.sscc.uos") && (Machine != "dn19.sscc.uos")
+should_transfer_files = YES
+when_to_transfer_output = ON_EXIT
+transfer_output_files = production_results.tar.gz
+transfer_output_remaps = "production_results.tar.gz = results/job$(job_index).seed$(seed).$(Cluster).$(Process).tar.gz"
+# 시험할 때만 주석을 풀어서 이벤트 수를 줄인다
+# environment = "NEVENTS=500"
+queue job_index,seed from jobs.tsv
